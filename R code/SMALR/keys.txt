@@ -1,0 +1,7 @@
+
+consumerKey <-"G51KUQTqdYzMWk0XBoHpGPah2"
+consumerSecret<-"9ILQpHv5E5QElY8bfRzqy9Z3b8WIeOctBC4vlX2CplPnPaUgUF"
+
+accessToken<-"1844121-FnMyAIkRngSjqEsniQsTOQvyIYkGQWvKHGXJLlkMHJ"
+accessSecret<-"A9hLM7MSfTmIxlN5fRKfQZmeezn0FamNXKWqyzeeJVJAN"
+

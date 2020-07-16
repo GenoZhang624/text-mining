@@ -1,0 +1,531 @@
+## Extracting tweets with specific hashtags
+
+```{r, eval=TRUE}
+
+# install relevant packages
+# install.packages("knitr",repos = "http://cran.us.r-project.org")
+# install.packages("twitteR")
+# install.packages("ROAuth")
+library(twitteR)
+library(ROAuth)
+
+# authenticate with Twitter
+
+consumerKey <-"G51KUQTqdYzMWk0XBoHpGPah2"
+consumerSecret<-"9ILQpHv5E5QElY8bfRzqy9Z3b8WIeOctBC4vlX2CplPnPaUgUF"
+
+accessToken<-"1844121-FnMyAIkRngSjqEsniQsTOQvyIYkGQWvKHGXJLlkMHJ"
+accessSecret<-"A9hLM7MSfTmIxlN5fRKfQZmeezn0FamNXKWqyzeeJVJAN"
+
+setup_twitter_oauth (consumerKey, consumerSecret, accessToken, accessSecret)  # authenticate
+
+# search for tweets by keyword
+
+tweets<-searchTwitter("#parasite", n=2000, lang="en", locale=NULL, geocode=NULL, sinceID=NULL, maxID=NULL, resultType=NULL, retryOnRateLimit=120)
+
+#collect the kim-daughter data respectively and combine them
+# tweets0<-searchTwitter("#ki-jung", n=2000, lang="en", locale=NULL, geocode=NULL, sinceID=NULL, maxID=NULL, resultType=NULL, retryOnRateLimit=120)
+
+# tweets1<-searchTwitter("#ki-jeong", n=2000, lang="en", locale=NULL, geocode=NULL, sinceID=NULL, maxID=NULL, resultType=NULL, retryOnRateLimit=120)
+
+# tweets0<-twListToDF(tweets0)
+# tweets1<-twListToDF(tweets1)
+# tweets <- rbind(tweets0,tweets1)
+
+# put tweets in a data frame
+tweets<- twListToDF(tweets)
+
+# write out to a CSV file
+write.csv(tweets, "datasets/#parasite.csv")
+
+
+```
+##Data cleaning
+
+```{r, eval=TRUE}
+# install these packages if you do not have them installed yet
+# install.packages("twitteR")
+# install.packages("plyr")
+# install.packages("stringr")
+# install.packages(tm)
+
+# load the libraries
+library(twitteR)
+library(plyr)
+library(stringr)
+library(ggplot2)
+library(tm)
+
+# import your data set to analyse,
+# ensure it is in the same directory as your code, otherwise you need to add the path
+Dataset2 <- read.csv("datasets/#parasite.csv")
+tweets.df <- Dataset2$text
+
+# get rid of problem characters
+tweets.df <- sapply(tweets.df,function(row) iconv(row, "latin1", "ASCII", sub=""))
+
+# remove punctuation, digits, special characters etc
+tweets.df = gsub("&amp", "", tweets.df)
+tweets.df= gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", tweets.df)
+tweets.df = gsub("@\\w+", "", tweets.df)
+tweets.df= gsub("[[:punct:]]", "", tweets.df)
+tweets.df = gsub("[[:digit:]]", "", tweets.df)
+tweets.df = gsub("http\\w+", "", tweets.df)
+tweets.df = gsub("[ \t]{2,}", "", tweets.df)
+tweets.df= gsub("^\\s+|\\s+$", "", tweets.df) 
+
+
+# get rid of unnecessary spaces
+# tweets.df <- str_replace_all(tweets.df," "," ")
+
+# get rid of URLs
+# tweets.df <- str_replace_all(tweets.df, "http://t.co/[a-z,A-Z,0-9]*{8}","")
+
+# take out the retweet header (there is only one)
+tweets.df <- str_replace(tweets.df,"RT @[a-z,A-Z]*: ","")
+
+# convert text to lowercase
+tweets.df<-tolower(tweets.df)
+
+# get rid of hashtags
+tweets.df <- str_replace_all(tweets.df,"#[a-z,A-Z]*","")
+
+# get rid of references to other screen names
+tweets.df <- str_replace_all(tweets.df,"@[a-z,A-Z]*","")  
+
+# View(tweets.df)
+
+```
+
+## Generating a word cloud
+
+This code will perform cleaning over a set of tweets and generate a word cloud. It requires a CSV file where the column containing the text is named "Text". 
+
+```{r, eval=TRUE}
+
+# load the libraries
+library(plyr)
+library(stringr)
+library(tm)
+library(wordcloud)
+
+#library(wordcloud2)
+
+# get the text column
+tweets.df<- Dataset2$text
+tweets.df <- sapply(tweets.df,function(row) iconv(row, "latin1", "ASCII", sub=""))
+
+tweets.df = gsub("&amp", "", tweets.df)
+tweets.df = gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", tweets.df)
+tweets.df = gsub("@\\w+", "", tweets.df)
+tweets.df = gsub("[[:punct:]]", "", tweets.df)
+tweets.df = gsub("[[:digit:]]", "", tweets.df)
+tweets.df = gsub("http\\w+", "", tweets.df)
+tweets.df = gsub("[ \t]{2,}", "", tweets.df)
+tweets.df = gsub("^\\s+|\\s+$", "", tweets.df) 
+
+# View(tweets.df)
+
+# corpus will hold a collection of text documents
+tweet_corpus <- Corpus(VectorSource(tweets.df)) 
+tweet_corpus
+inspect(tweet_corpus[1])
+
+# clean text
+tweet_clean <- tm_map(tweet_corpus, removePunctuation)
+tweet_clean <- tm_map(tweet_clean, removeWords, stopwords("english"))
+tweet_clean <- tm_map(tweet_clean, removeNumbers)
+tweet_clean <- tm_map(tweet_clean, stripWhitespace)
+wordcloud(tweet_clean, random.order=0.5,max.words=100, col=rainbow(50),min.freq = 5,  scale=c(2.0,0.3))
+
+```
+## Generating a topic model
+
+The code below outlines the general steps taken to clean a set of tweets. Additional lines may be required depending on the desired output. Other forms of textual data sets may require additional steps/forms of cleaning. For this specific code, do ensure that you import a CSV file and that the column containing the text that you want to clean is named "Text".
+
+
+```{r, eval= TRUE, message=FALSE}
+# install.packages("LDAvis")
+# install.packages("tm")
+# install.packages("lda")
+# install.packages("servr")
+# install.packages("shiny")
+# install.packages("stringr")
+
+library(LDAvis)
+library(tm)
+library(lda)
+library(shiny)
+library(stringr)
+
+stop_words <- stopwords("SMART")
+
+Dataset2<-read.csv("datasets/#parasite.csv")
+tweet <- Dataset2$text
+# tweet<- unique(tweet)
+
+tweet <- sapply(tweet, function(x) iconv(x, to='UTF-8', sub='byte'))
+
+tweet= gsub("[[:punct:]]", "", tweet)
+tweet = gsub("[[:digit:]]", "", tweet)
+tweet= gsub("http\\w+", "", tweet)
+tweet = gsub("[ \t]{2,}", "", tweet)
+tweet= gsub("^\\s+|\\s+$", "", tweet) 
+#ref: ( Hicks , 2014) 
+
+#get rid of unnecessary spaces
+tweet <- str_replace_all(tweet," "," ")
+
+tweet <- str_replace(tweet,"RT @[a-z,A-Z]*: ","")
+# Get rid of hashtags
+tweet <- str_replace_all(tweet,"#[a-z,A-Z]*","")
+# Get rid of references to other screennames
+tweet<- str_replace_all(tweet,"@[a-z,A-Z]*","")  
+
+# convert text to lowercase
+tweet<-tolower(tweet)
+
+# tokenize on space and output as a list:
+doc.list <- strsplit(tweet, "[[:space:]]+")
+
+# compute the table of terms:
+term.table <- table(unlist(doc.list))
+term.table <- sort(term.table, decreasing = TRUE)
+
+# remove terms that are stop words or occur fewer than 5 times:
+del <- names(term.table) %in% stop_words | term.table < 5
+term.table <- term.table[!del]
+vocab <- names(term.table)
+
+# now put the documents into the format required by the lda package:
+get.terms <- function(x) {
+  index <- match(x, vocab)
+  index <- index[!is.na(index)]
+  rbind(as.integer(index - 1), as.integer(rep(1, length(index))))
+}
+documents <- lapply(doc.list, get.terms)
+
+# Compute some statistics related to the data set:
+D <- length(documents)  # number of documents 
+W <- length(vocab)  # number of terms in the vocab 
+doc.length <- sapply(documents, function(x) sum(x[2, ]))  # number of tokens per document 
+N <- sum(doc.length)  # total number of tokens in the data 
+term.frequency <- as.integer(term.table)  # frequencies of terms in the corpus 
+
+
+# MCMC and model tuning parameters:
+K <- 20
+G <- 5000
+alpha <- 0.02
+eta <- 0.02
+
+# Fit the model:
+library(lda)
+set.seed(357)
+t1 <- Sys.time()
+fit <- lda.collapsed.gibbs.sampler(documents = documents, K = 10, vocab = vocab, 
+                                   num.iterations = 200, alpha = 0.5, eta=0.5,
+                                    initial = NULL, burnin = 0,
+                                   compute.log.likelihood = TRUE)
+t2 <- Sys.time()
+t2 - t1  
+
+#LDAvis
+theta <- t(apply(fit$document_sums + 0.5, 2, function(x) x/sum(x)))
+phi <- t(apply(t(fit$topics) + 0.5, 2, function(x) x/sum(x)))
+
+
+tweetvis <- list(phi = phi,
+                     theta = theta,
+                     doc.length = doc.length,
+                     vocab = vocab,
+                     term.frequency = term.frequency)
+
+
+# create the JSON object to feed the visualization:
+json <- createJSON(phi = tweetvis$phi, 
+                   theta = tweetvis$theta, 
+                   doc.length = tweetvis$doc.length, 
+                   vocab = tweetvis$vocab, 
+                   term.frequency = tweetvis$term.frequency)
+serVis(json, out.dir = tempfile(), open.browser = interactive())
+
+```
+## Emotion detection
+This code below uses the NRC emotion lexicon to detect emotions in a text. For this code, we have removed the negative and positive (sentiment polarity) detection and only show eight emotions (trust, anticipation, sadness, joy, anger, fear, surprise and disgust). This code assumes that the column name for the text to be analyses is called "text".
+
+```{r, eval= TRUE, message=FALSE}
+library(syuzhet)
+library(plotly)
+library(tm)
+library(wordcloud)
+
+#import your dataset to analyse, 
+#ensure it is in the same directory as your code, 
+#otherwise you need to add the path
+  
+tweets <- read.csv("datasets/#parasite.csv")
+  clean_tweets = tweets$text
+  
+  #clean_tweets = sapply(tweets, function(x) x$getText())
+  # remove retweet entities
+  clean_tweets = gsub('(RT|via)((?:\\b\\W*@\\w+)+)', '', clean_tweets)
+  # remove at people
+  clean_tweets = gsub('@\\w+', '', clean_tweets)
+  # remove punctuation
+  clean_tweets = gsub('[[:punct:]]', '', clean_tweets)
+  # remove numbers
+  clean_tweets = gsub('[[:digit:]]', '', clean_tweets)
+  # remove html links
+  clean_tweets = gsub('http\\w+', '', clean_tweets)
+  # remove unnecessary spaces
+  clean_tweets = gsub('[ \t]{2,}', '', clean_tweets)
+  clean_tweets = gsub('^\\s+|\\s+$', '', clean_tweets)
+  # remove emojis or special characters
+  clean_tweets = gsub('<.*>', '', enc2native(clean_tweets))
+  
+  clean_tweets = tolower(clean_tweets)
+  
+  emotions <- get_nrc_sentiment(clean_tweets)
+  emo_bar = colSums(emotions)
+  emo_sum = data.frame(count=emo_bar, emotion=names(emo_bar))
+  emo_sum$emotion = factor(emo_sum$emotion, levels=emo_sum$emotion[order(emo_sum$count, decreasing = TRUE)])
+  
+  emo_sum <- emo_sum[1:10,]
+  emo_sum$percent<-(emo_sum$count/sum(emo_sum$count))*100
+  
+   #Visualize the emotions from NRC sentiments
+plot_ly(emo_sum, x=~emotion, y=~percent, type="bar", color=~emotion) %>%
+layout(xaxis=list(title=""),  yaxis = list(title = "Emotion count"),
+showlegend=FALSE,title="Distribution of emotion categories") %>%
+layout(yaxis = list(ticksuffix = "%"))
+``` 
+## Detecting Sentiment Polarity
+This code uses an external sentiment lexicon to detect the polarity of a text corpora. It classifies the sentiment of a piece of text as either positive, negative or neutral using the positive and negative sentiment lexicons. Do ensure that the positive and negative lexicon are in the same directory as the code.
+
+
+```{r, eval= TRUE, message=FALSE}
+#install.packages("twitteR")
+#install.packages("plyr")
+#install.packages("stringr")
+#install.packages("tm")
+#install.packages("scales")
+
+
+#loading the library
+library(plyr)
+library(stringr)
+library(ggplot2)
+library(tm)
+library(scales)
+
+
+#read in the file
+file<-read.csv("datasets/#parasite.csv")
+tweets.df<-file$text
+
+tweets.df <- sapply(tweets.df,function(row) iconv(row, "latin1", "ASCII", sub=""))
+
+#cleaning the tweets
+tweets.df = gsub("&amp", "", tweets.df)
+tweets.df= gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", tweets.df)
+tweets.df = gsub("@\\w+", "", tweets.df)
+tweets.df= gsub("[[:punct:]]", "", tweets.df)
+tweets.df = gsub("[[:digit:]]", "", tweets.df)
+tweets.df = gsub("http\\w+", "", tweets.df)
+tweets.df = gsub("[ \t]{2,}", "", tweets.df)
+tweets.df= gsub("^\\s+|\\s+$", "", tweets.df) 
+
+
+
+#get rid of unnecessary spaces
+tweets.df <- str_replace_all(tweets.df," "," ")
+# Get rid of URLs
+#tweets.df <- str_replace_all(tweets.df, "http://t.co/[a-z,A-Z,0-9]*{8}","")
+# Take out retweet header, there is only one
+tweets.df <- str_replace(tweets.df,"RT @[a-z,A-Z]*: ","")
+# Get rid of hashtags
+tweets.df <- str_replace_all(tweets.df,"#[a-z,A-Z]*","")
+# Get rid of references to other screennames
+tweets.df <- str_replace_all(tweets.df,"@[a-z,A-Z]*","")  
+
+tweets.df<-tolower(tweets.df)
+
+#view cleaned tweets
+# View(tweets.df)
+
+
+#Reading the Lexicon positive and negative words
+pos <- readLines("positive_words.txt")
+neg <- readLines("negative_words.txt")
+
+#function to calculate sentiment score
+score.sentiment <- function(sentences, pos.words, neg.words, .progress='none')
+{
+  # Parameters
+  # sentences: vector of text to score
+  # pos.words: vector of words of postive sentiment
+  # neg.words: vector of words of negative sentiment
+  # .progress: passed to laply() to control of progress bar
+  
+  # create simple array of scores with laply
+  scores <- laply(sentences,
+                  function(sentence, pos.words, neg.words)
+                  {
+                    # remove punctuation
+                    sentence <- gsub("[[:punct:]]", "", sentence)
+                    # remove control characters
+                    sentence <- gsub("[[:cntrl:]]", "", sentence)
+                    # remove digits
+                    sentence <- gsub('\\d+', '', sentence)
+                    
+                    #convert to lower
+                    sentence <- tolower(sentence)
+                    
+                    
+                    # split sentence into words with str_split (stringr package)
+                    word.list <- str_split(sentence, "\\s+")
+                    words <- unlist(word.list)
+                    
+                    # compare words to the dictionaries of positive & negative terms
+                    pos.matches <- match(words, pos)
+                    neg.matches <- match(words, neg)
+                    
+                    # get the position of the matched term or NA
+                    # we just want a TRUE/FALSE
+                    pos.matches <- !is.na(pos.matches)
+                    neg.matches <- !is.na(neg.matches)
+                    
+                    # final score
+                    score <- sum(pos.matches) - sum(neg.matches)
+                    return(score)
+                  }, pos.words, neg.words, .progress=.progress )
+  # data frame with scores for each sentence
+  scores.df <- data.frame(text=sentences, score=scores)
+  return(scores.df)
+}
+#sentiment score
+scores_twitter <- score.sentiment(tweets.df, pos.txt, neg.txt, .progress='text')
+
+
+# View(scores_twitter)
+
+#Summary of the sentiment scores
+summary(scores_twitter)
+
+scores_twitter$score_chr <- ifelse(scores_twitter$score < 0,'Negtive', ifelse(scores_twitter$score > 0, 'Positive', 'Neutral'))
+
+
+# View(scores_twitter)
+
+
+#Convert score_chr to factor for visualizations
+scores_twitter$score_chr <- as.factor(scores_twitter$score_chr)
+names(scores_twitter)[3]<-paste("Sentiment")  
+
+#plot to show number of negative, positive and neutral comments
+Viz1 <- ggplot(scores_twitter, aes(x=Sentiment, fill=Sentiment))+ geom_bar(aes(y = (..count..)/sum(..count..))) + 
+  scale_y_continuous(labels = percent)+labs(y="Score")+
+  theme(text =element_text(size=15))+theme(axis.text = element_text(size=15))+ theme(legend.position="none")+ coord_cartesian(ylim=c(0,0.6)) + scale_fill_manual(values=c("firebrick1", "gray50", "limeGREEN"))
+Viz1
+
+```
+##  Word Frequency Time Series
+The code below measures the frequency of certain terms over time (Months of the year). The data used here is from twitter so this code in its form will only work for a data having a similar date format (usually twitter date format with column name created_at).
+
+```{r, eval= FALSE, message=FALSE}
+library(slam)
+library(tm)
+library(lubridate)
+library(syuzhet)
+library(dplyr)
+library("reshape2")
+library("ggplot2")
+
+
+
+#read in the data
+textdata <- read.csv("datasets/#parasite.csv", encoding = "UTF-8")
+
+#convert the twitter data format
+textdata$created <- as.POSIXct(textdata$created, tz="GMT",format="%Y-%m-%d %H:%M:%OS" )
+#select the months and keep as a date format
+textdata$Month <- format(as.Date(textdata$created), "%m")
+textdata$Month2 <- months(textdata$created)
+
+names(textdata)[names(textdata) == 'text'] <- 'text'#incase you data has the column name #Text, change it to "text" as the next line will only accept the column name "text"
+#take the text column and convert to a corpus
+textdata$doc_id<-textdata$doc_id <- seq_len(nrow(textdata))  # include the doc_id
+#text<as.character(textdata$text)
+corpus <- Corpus(DataframeSource(textdata))
+corpus <- Corpus(DataframeSource(textdata))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removeWords, stopwords("en"))
+corpus <- tm_map(corpus, removePunctuation, preserve_intra_word_dashes = TRUE)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, stripWhitespace)
+
+#form a document term matrix
+DTM <- DocumentTermMatrix(corpus)
+
+
+#select the terms you want to observe
+terms_to_observe <- c("ki-jung","ki-jeong","jessica","mother","dad","mom")
+#reduce the DTM to contain only those terms
+DTM_reduced <- as.matrix(DTM[, terms_to_observe])
+#sum the frequecies 
+counts_per_month<- aggregate(DTM_reduced, by = list(decade = textdata$Month), sum)
+
+
+counts_per_month_long <- melt(counts_per_month, id="decade")  # convert to long format
+
+# Visualize the word frequecy time series
+p2 <- ggplot(data = counts_per_month_long, aes(x = factor(decade), y = value, colour = variable)) +
+    geom_line(aes(group = variable)) + geom_point() + xlab("Month") +
+  ylab("Frequency") +  labs(color='Terms to observe')
+
+
+p2
+
+```
+##  Maping twitter users (hashtag)
+
+```{r, eval= TRUE, message=TRUE}
+#######
+#Step 1: Enable pings to the Twitter API:
+#######
+#Load / install "twitteR" package:
+if (!require("twitteR")) {
+  install.packages("twitteR", repos="http://cran.rstudio.com/") 
+  library("twitteR")
+}
+consumerKey <-"G51KUQTqdYzMWk0XBoHpGPah2"
+consumerSecret<-"9ILQpHv5E5QElY8bfRzqy9Z3b8WIeOctBC4vlX2CplPnPaUgUF"
+
+accessToken<-"1844121-FnMyAIkRngSjqEsniQsTOQvyIYkGQWvKHGXJLlkMHJ"
+accessSecret<-"A9hLM7MSfTmIxlN5fRKfQZmeezn0FamNXKWqyzeeJVJAN"
+
+#Log your info with the Twitter API:
+options(httr_oauth_cache=T) #This will enable the use of a local file to cache OAuth access credentials between R sessions.
+setup_twitter_oauth(consumerKey,
+                    consumerSecret,
+                    accessToken,
+                    accessSecret)
+#######
+# Step 2: Download the Followers of a Given Twitter Account
+library(rtweet)
+
+## search for 10,000 tweets with the hashtag
+rt <- search_tweets("#Parasite", n = 10000)
+
+## create lat/lng variables using all available tweet and profile geo-location data
+rt <- lat_lng(rt)
+
+## plot state boundaries
+par(mar = c(0, 0, 0, 0))
+maps::map("world", lwd = .25)
+
+## plot lat and lng points onto state map
+with(rt, points(lng, lat, pch = 20, cex = 1, col = rgb(0, .3, .7, .75)))
+
+```
